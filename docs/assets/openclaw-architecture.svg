@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-label="OpenClaw architecture">
+  <defs>
+    <style>
+      .title { font: 700 30px "Segoe UI", Arial, sans-serif; fill: #0b1f33; }
+      .section { font: 700 22px "Segoe UI", Arial, sans-serif; fill: #0b1f33; }
+      .node-title { font: 700 18px "Segoe UI", Arial, sans-serif; fill: #0b1f33; }
+      .node-text { font: 500 15px "Segoe UI", Arial, sans-serif; fill: #183146; }
+      .edge { stroke: #3a4a5f; stroke-width: 2.2; fill: none; marker-end: url(#arrow); }
+      .edge-bi { stroke: #3a4a5f; stroke-width: 2.2; fill: none; marker-start: url(#arrow); marker-end: url(#arrow); }
+      .box-access { fill: #eef6ff; stroke: #5b8ff9; stroke-width: 2; rx: 16; }
+      .box-runtime { fill: #fff4e8; stroke: #fa8c16; stroke-width: 2; rx: 16; }
+      .box-dep { fill: #f6ffed; stroke: #52c41a; stroke-width: 2; rx: 16; }
+      .group { fill: #ffffff; stroke: #d7dee7; stroke-width: 2; rx: 20; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3a4a5f" />
+    </marker>
+  </defs>
+
+  <text x="600" y="52" text-anchor="middle" class="title">OpenClaw Runtime Architecture</text>
+
+  <rect x="70" y="95" width="300" height="250" class="group" />
+  <text x="220" y="130" text-anchor="middle" class="section">Access</text>
+
+  <rect x="100" y="160" width="240" height="70" class="box-access" />
+  <text x="220" y="190" text-anchor="middle" class="node-title">Browser / API Client</text>
+  <text x="220" y="213" text-anchor="middle" class="node-text">User traffic</text>
+
+  <rect x="100" y="250" width="240" height="70" class="box-access" />
+  <text x="220" y="280" text-anchor="middle" class="node-title">Service / Ingress</text>
+  <text x="220" y="303" text-anchor="middle" class="node-text">Cluster entrypoint</text>
+
+  <rect x="430" y="95" width="430" height="450" class="group" />
+  <text x="645" y="130" text-anchor="middle" class="section">Runtime Pod</text>
+
+  <rect x="470" y="180" width="350" height="125" class="box-runtime" />
+  <text x="645" y="214" text-anchor="middle" class="node-title">OpenClaw Gateway</text>
+  <text x="645" y="239" text-anchor="middle" class="node-text">Port: 18789</text>
+  <text x="645" y="263" text-anchor="middle" class="node-text">Control UI + API routing</text>
+
+  <rect x="470" y="360" width="350" height="125" class="box-runtime" />
+  <text x="645" y="394" text-anchor="middle" class="node-title">aio-sandbox</text>
+  <text x="645" y="419" text-anchor="middle" class="node-text">Port: 8080</text>
+  <text x="645" y="443" text-anchor="middle" class="node-text">Browser / shell / Jupyter runtime</text>
+
+  <rect x="900" y="95" width="240" height="450" class="group" />
+  <text x="1020" y="130" text-anchor="middle" class="section">Dependencies</text>
+
+  <rect x="935" y="190" width="170" height="95" class="box-dep" />
+  <text x="1020" y="225" text-anchor="middle" class="node-title">Model Provider</text>
+  <text x="1020" y="248" text-anchor="middle" class="node-text">LLM APIs</text>
+
+  <rect x="935" y="350" width="170" height="95" class="box-dep" />
+  <text x="1020" y="385" text-anchor="middle" class="node-title">Shared Storage</text>
+  <text x="1020" y="408" text-anchor="middle" class="node-text">PVC workspace</text>
+
+  <path d="M 220 230 L 220 250" class="edge" />
+  <path d="M 340 285 L 470 242" class="edge" />
+  <path d="M 645 305 L 645 360" class="edge-bi" />
+  <path d="M 820 242 L 935 238" class="edge" />
+  <path d="M 820 242 L 935 398" class="edge-bi" />
+  <path d="M 820 422 L 935 398" class="edge-bi" />
+</svg>

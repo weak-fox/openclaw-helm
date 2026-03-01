@@ -1,0 +1,257 @@
+{{- include "openclaw.validate" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "openclaw.fullname" . }}
+  labels:
+    {{- include "openclaw.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.workload.replicaCount }}
+  strategy:
+    type: {{ .Values.workload.strategy }}
+  selector:
+    matchLabels:
+      {{- include "openclaw.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "openclaw.selectorLabels" . | nindent 8 }}
+        {{- with .Values.workload.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/configmap: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/init-scripts: {{ include (print $.Template.BasePath "/init-scripts-configmap.yaml") . | sha256sum }}
+        checksum/api-key-secret: {{ include (print $.Template.BasePath "/secret-openclaw-apikey.yaml") . | sha256sum }}
+        {{- with .Values.workload.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "openclaw.serviceAccountName" . }}
+      {{- with .Values.workload.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.workload.podSecurityContext | nindent 8 }}
+      {{- with .Values.workload.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.workload.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.workload.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        {{- if .Values.storage.config.enabled }}
+        - name: init-config
+          image: {{ include "openclaw.mainImage" . | quote }}
+          imagePullPolicy: {{ .Values.openclaw.init.configPullPolicy }}
+          command:
+            - sh
+            - /scripts/init-config.sh
+          env:
+            - name: CONFIG_MODE
+              value: {{ .Values.openclaw.config.mode | quote }}
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.openclaw.paths.homeDir | quote }}
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: init-scripts
+              mountPath: /scripts
+              readOnly: true
+            {{- if .Values.storage.tmp.enabled }}
+            - name: tmp
+              mountPath: /tmp
+            {{- end }}
+        {{- end }}
+        - name: init-skills
+          {{- if eq .Values.openclaw.bootstrap.mode "offline" }}
+          image: {{ include "openclaw.seedImage" . | quote }}
+          imagePullPolicy: {{ .Values.openclaw.bootstrap.seedImage.pullPolicy }}
+          {{- else }}
+          image: {{ include "openclaw.mainImage" . | quote }}
+          imagePullPolicy: {{ .Values.openclaw.init.skillsPullPolicy }}
+          {{- end }}
+          command:
+            - sh
+            - /scripts/init-skills.sh
+          env:
+            - name: HOME
+              value: /tmp
+            - name: OPENCLAW_HOME
+              value: {{ .Values.openclaw.paths.home | quote }}
+            - name: OPENCLAW_HOME_DIR
+              value: {{ .Values.openclaw.paths.homeDir | quote }}
+            - name: BOOTSTRAP_MODE
+              value: {{ .Values.openclaw.bootstrap.mode | quote }}
+            - name: SKILLS_INSTALL_ENABLED
+              value: {{ .Values.openclaw.bootstrap.skills.enabled | quote }}
+            - name: SKILLS_INSTALL_ITEMS
+              value: {{ join " " .Values.openclaw.bootstrap.skills.items | quote }}
+            - name: PLUGINS_INSTALL_ENABLED
+              value: {{ .Values.openclaw.bootstrap.plugins.enabled | quote }}
+            - name: PLUGINS_INSTALL_ITEMS_JSON
+              value: {{ .Values.openclaw.bootstrap.plugins.items | toJson | quote }}
+            - name: NPM_CONFIG_CACHE
+              value: /tmp/.npm
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.openclaw.paths.homeDir | quote }}
+            - name: init-scripts
+              mountPath: /scripts
+              readOnly: true
+            {{- if .Values.storage.tmp.enabled }}
+            - name: tmp
+              mountPath: /tmp
+            {{- end }}
+      containers:
+        - name: main
+          image: {{ include "openclaw.mainImage" . | quote }}
+          imagePullPolicy: {{ .Values.openclaw.image.pullPolicy }}
+          command:
+            {{- toYaml .Values.openclaw.container.command | nindent 12 }}
+          args:
+            {{- toYaml .Values.openclaw.container.args | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.gateway.service.port }}
+              protocol: TCP
+          env:
+            - name: OPENCLAW_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "openclaw.apiKeySecretName" . }}
+                  key: {{ .Values.openclaw.secrets.apiKey.key }}
+            {{- with .Values.openclaw.container.env }}
+            {{- range $key, $value := . }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- end }}
+          {{- with .Values.openclaw.container.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.openclaw.container.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.openclaw.container.resources | nindent 12 }}
+          {{- if .Values.openclaw.container.probes.startup.enabled }}
+          startupProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: {{ .Values.openclaw.container.probes.startup.initialDelaySeconds }}
+            periodSeconds: {{ .Values.openclaw.container.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ .Values.openclaw.container.probes.startup.timeoutSeconds }}
+            failureThreshold: {{ .Values.openclaw.container.probes.startup.failureThreshold }}
+          {{- end }}
+          {{- if .Values.openclaw.container.probes.readiness.enabled }}
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: {{ .Values.openclaw.container.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.openclaw.container.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.openclaw.container.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.openclaw.container.probes.readiness.failureThreshold }}
+          {{- end }}
+          {{- if .Values.openclaw.container.probes.liveness.enabled }}
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: {{ .Values.openclaw.container.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.openclaw.container.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.openclaw.container.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.openclaw.container.probes.liveness.failureThreshold }}
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.openclaw.paths.homeDir | quote }}
+            {{- if .Values.storage.tmp.enabled }}
+            - name: tmp
+              mountPath: /tmp
+            {{- end }}
+        {{- if .Values.sandbox.enabled }}
+        - name: sandbox
+          image: {{ include "openclaw.sandboxImage" . | quote }}
+          imagePullPolicy: {{ .Values.sandbox.image.pullPolicy }}
+          ports:
+            - name: sandbox-vnc
+              containerPort: {{ .Values.gateway.service.sandboxPort }}
+              protocol: TCP
+          env:
+            - name: WORKSPACE
+              value: {{ .Values.sandbox.workspaceMountPath | quote }}
+            {{- range $key, $value := .Values.sandbox.env }}
+            {{- if ne $key "WORKSPACE" }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- end }}
+          securityContext:
+            {{- toYaml .Values.sandbox.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.sandbox.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.sandbox.workspaceMountPath | quote }}
+              subPath: workspace
+            {{- if .Values.storage.tmp.enabled }}
+            - name: tmp
+              mountPath: /tmp
+            {{- end }}
+            {{- if and .Values.storage.sharedMemory.enabled .Values.sandbox.enabled }}
+            - name: sandbox-shm
+              mountPath: {{ .Values.sandbox.shmMountPath | quote }}
+            {{- end }}
+        {{- end }}
+      volumes:
+        {{- if .Values.storage.config.enabled }}
+        - name: config
+          configMap:
+            name: {{ include "openclaw.fullname" . }}-config
+        {{- end }}
+        - name: init-scripts
+          configMap:
+            name: {{ include "openclaw.fullname" . }}-init-scripts
+        - name: data
+          {{- if .Values.storage.data.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-data" (include "openclaw.fullname" .)) .Values.storage.data.existingClaim }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- if .Values.storage.tmp.enabled }}
+        - name: tmp
+          emptyDir: {}
+        {{- end }}
+        {{- if and .Values.storage.sharedMemory.enabled .Values.sandbox.enabled }}
+        - name: sandbox-shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.storage.sharedMemory.sizeLimit }}
+        {{- end }}

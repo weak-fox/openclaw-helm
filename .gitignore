@@ -1,0 +1,14 @@
+# OS/editor noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Helm/package artifacts
+output/
+*.tgz
+*.prov
+.cr-release-packages/
+.cr-index/
+.playwright-cli/

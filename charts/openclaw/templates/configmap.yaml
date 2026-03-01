@@ -1,0 +1,11 @@
+{{- if .Values.storage.config.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "openclaw.fullname" . }}-config
+  labels:
+    {{- include "openclaw.labels" . | nindent 4 }}
+data:
+  openclaw.json: |
+{{ include "openclaw.configJson" . | nindent 4 }}
+{{- end }}

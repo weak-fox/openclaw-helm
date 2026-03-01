@@ -1,0 +1,18 @@
+openclaw:
+  # Reuse an existing Secret that stores your provider key.
+  # Example:
+  # kubectl create secret generic openclaw-api-key \
+  #   -n openclaw \
+  #   --from-literal=OPENCLAW_API_KEY=sk-xxxx
+  secrets:
+    apiKey:
+      existingSecret: openclaw-api-key
+      key: OPENCLAW_API_KEY
+
+  config:
+    modelProvider:
+      provider: openai
+      api: openai-responses
+      baseUrl: https://api.openai.com/v1
+      model: gpt-4o-mini
+

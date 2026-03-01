@@ -1,0 +1,303 @@
+name: Chart Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "charts/openclaw/**"
+      - "README.md"
+      - ".github/workflows/chart-release.yaml"
+      - "artifacthub-repo.yml"
+  release:
+    types:
+      - published
+  workflow_dispatch:
+
+concurrency:
+  group: chart_releaser
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.17.2
+
+      - name: Ensure gh-pages branch exists
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            echo "gh-pages exists."
+            exit 0
+          fi
+
+          echo "gh-pages missing, creating..."
+          tmp="$(mktemp -d)"
+          cleanup() {
+            git worktree remove "$tmp" --force || true
+          }
+          trap cleanup EXIT
+
+          git worktree add -B gh-pages "$tmp" HEAD
+          cd "$tmp"
+          git rm -r --ignore-unmatch . >/dev/null 2>&1 || true
+          printf '%s\n' \
+            'apiVersion: v1' \
+            'entries: {}' \
+            'generated: "1970-01-01T00:00:00Z"' > index.yaml
+          touch .nojekyll
+          git add -A
+          git commit -m "chore: initialize gh-pages branch"
+          git push origin gh-pages
+
+      - name: Ensure gh-pages index.yaml is valid
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          cleanup() {
+            git worktree remove "$tmp" --force || true
+          }
+          trap cleanup EXIT
+
+          git fetch origin gh-pages:gh-pages
+          git worktree add "$tmp" gh-pages
+          cd "$tmp"
+
+          needs_index_fix=false
+          needs_nojekyll=false
+
+          if [ ! -f .nojekyll ]; then
+            needs_nojekyll=true
+          fi
+
+          if [ ! -s index.yaml ]; then
+            needs_index_fix=true
+          elif ! grep -q '^apiVersion:' index.yaml; then
+            needs_index_fix=true
+          elif ! ruby -e 'require "yaml"; YAML.load_file("index.yaml")' >/dev/null 2>&1; then
+            needs_index_fix=true
+          fi
+
+          if [ "$needs_index_fix" = "true" ]; then
+            printf '%s\n' \
+              'apiVersion: v1' \
+              'entries: {}' \
+              'generated: "1970-01-01T00:00:00Z"' > index.yaml
+          fi
+
+          if [ "$needs_nojekyll" = "true" ]; then
+            touch .nojekyll
+          fi
+
+          if [ "$needs_index_fix" = "true" ] || [ "$needs_nojekyll" = "true" ]; then
+            git add index.yaml .nojekyll
+            if git diff --cached --quiet; then
+              echo "No gh-pages metadata changes to commit."
+              exit 0
+            fi
+            git commit -m "chore: repair gh-pages metadata"
+            git push origin gh-pages
+          else
+            echo "gh-pages index.yaml and .nojekyll are valid."
+          fi
+
+      - name: Prune stale chart entries from gh-pages index
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          cleanup() {
+            git worktree remove "$tmp" --force || true
+          }
+          trap cleanup EXIT
+
+          git fetch origin gh-pages:gh-pages
+          git worktree add "$tmp" gh-pages
+          cd "$tmp"
+
+          stale_versions="$(ruby <<'RUBY'
+          require "yaml"
+          require "net/http"
+          require "uri"
+
+          data = YAML.load_file("index.yaml") || {}
+          entries = data.dig("entries", "openclaw") || []
+          stale = []
+
+          entries.each do |entry|
+            version = entry["version"].to_s
+            url = Array(entry["urls"]).first.to_s
+            if url.empty?
+              stale << version
+              next
+            end
+
+            begin
+              uri = URI(url)
+              ok = false
+              Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https", open_timeout: 8, read_timeout: 12) do |http|
+                res = http.request(Net::HTTP::Head.new(uri))
+                code = res.code.to_i
+                if code < 400
+                  ok = true
+                elsif [403, 405].include?(code)
+                  res2 = http.request(Net::HTTP::Get.new(uri))
+                  ok = res2.code.to_i < 400
+                end
+              end
+              stale << version unless ok
+            rescue StandardError
+              stale << version
+            end
+          end
+
+          puts stale.uniq.join(" ")
+          RUBY
+          )"
+
+          if [ -z "$stale_versions" ]; then
+            echo "No stale chart entries found in index.yaml."
+            exit 0
+          fi
+
+          echo "Removing stale chart versions from index.yaml: $stale_versions"
+          for v in $stale_versions; do
+            perl -0777 -i -pe 's/\n  - annotations:\n(?:(?!\n  - annotations:|\ngenerated:).)*?\n    version: \Q'"$v"'\E\n/\n/s' index.yaml
+          done
+
+          git add index.yaml
+          if git diff --cached --quiet; then
+            echo "No index.yaml changes after stale-entry pruning."
+            exit 0
+          fi
+
+          git commit -m "chore: prune stale chart entries from index"
+          git push origin gh-pages
+
+      - name: Detect chart signing mode
+        id: signing
+        env:
+          GPG_KEYRING_BASE64: ${{ secrets.GPG_KEYRING_BASE64 }}
+          CR_SIGN_KEY_NAME: ${{ secrets.CR_SIGN_KEY_NAME }}
+        run: |
+          set -euo pipefail
+          if [ -n "${GPG_KEYRING_BASE64:-}" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          key_name="${CR_SIGN_KEY_NAME:-openclaw-helm chart signing}"
+          echo "key_name=$key_name" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare GPG keyring
+        if: steps.signing.outputs.enabled == 'true'
+        env:
+          GPG_KEYRING_BASE64: ${{ secrets.GPG_KEYRING_BASE64 }}
+        run: |
+          set -euo pipefail
+          mkdir -p .cr-gpg
+          base64 -d <<< "$GPG_KEYRING_BASE64" > .cr-gpg/secring.gpg
+
+      - name: Run chart-releaser (signed)
+        id: cr_signed
+        if: steps.signing.outputs.enabled == 'true'
+        uses: helm/chart-releaser-action@v1.7.0
+        env:
+          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          CR_GENERATE_RELEASE_NOTES: "true"
+          CR_SKIP_EXISTING: "true"
+          CR_SIGN: "true"
+          CR_KEY: "${{ steps.signing.outputs.key_name }}"
+          CR_KEYRING: .cr-gpg/secring.gpg
+
+      - name: Run chart-releaser (unsigned)
+        id: cr_unsigned
+        if: steps.signing.outputs.enabled != 'true'
+        uses: helm/chart-releaser-action@v1.7.0
+        env:
+          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          CR_GENERATE_RELEASE_NOTES: "true"
+          CR_SKIP_EXISTING: "true"
+
+      - name: Resolve changed chart packages
+        id: changed
+        run: |
+          set -euo pipefail
+          changed="${{ steps.cr_signed.outputs.changed_charts }}${{ steps.cr_unsigned.outputs.changed_charts }}"
+          if [ -n "$changed" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Login to GitHub Container Registry
+        if: steps.changed.outputs.changed == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push chart package to GHCR (OCI)
+        if: steps.changed.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          repo="$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          found=false
+          for pkg in .cr-release-packages/*.tgz; do
+            if [ -e "$pkg" ]; then
+              found=true
+              helm push "$pkg" "oci://ghcr.io/${repo}"
+            fi
+          done
+          if [ "$found" = "false" ]; then
+            echo "No chart package found under .cr-release-packages; nothing pushed."
+          fi
+
+      - name: Sync Artifact Hub metadata to gh-pages
+        run: |
+          if [ ! -f artifacthub-repo.yml ]; then
+            echo "artifacthub-repo.yml not found, skipping."
+            exit 0
+          fi
+
+          if ! git fetch origin gh-pages:gh-pages; then
+            echo "gh-pages branch not found, skipping."
+            exit 0
+          fi
+
+          workdir="$(mktemp -d)"
+          cleanup() {
+            git worktree remove "$workdir" --force || true
+          }
+          trap cleanup EXIT
+
+          git worktree add "$workdir" gh-pages
+          cp artifacthub-repo.yml "$workdir/artifacthub-repo.yml"
+
+          cd "$workdir"
+          if git status --porcelain -- artifacthub-repo.yml | grep -q .; then
+            git add artifacthub-repo.yml
+            git commit -m "chore: sync artifacthub metadata"
+            git push origin gh-pages
+          else
+            echo "artifacthub-repo.yml unchanged."
+          fi

@@ -1,0 +1,271 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "OpenClaw Helm Values",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "global": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "nameOverride": { "type": "string" },
+        "fullnameOverride": { "type": "string" },
+        "imageRegistry": { "type": "string" }
+      }
+    },
+    "workload": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "replicaCount": { "type": "integer", "enum": [1] },
+        "strategy": { "type": "string", "enum": ["Recreate", "RollingUpdate"] },
+        "imagePullSecrets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "minLength": 1 }
+            },
+            "required": ["name"]
+          }
+        }
+      }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "create": { "type": "boolean" },
+        "automount": { "type": "boolean" },
+        "name": { "type": "string" }
+      }
+    },
+    "gateway": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "service": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "type": { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
+            "ipFamilyPolicy": { "type": "string", "enum": ["SingleStack", "PreferDualStack", "RequireDualStack"] },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "sandboxPort": { "type": "integer", "minimum": 1, "maximum": 65535 }
+          }
+        },
+        "trustedProxies": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "controlUi": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "allowInsecureAuth": { "type": "boolean" },
+            "dangerouslyAllowHostHeaderOriginFallback": { "type": "boolean" },
+            "dangerouslyDisableDeviceAuth": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "openclaw": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "image": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "repository": { "type": "string", "minLength": 1 },
+            "tag": { "type": "string", "minLength": 1 },
+            "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+          },
+          "required": ["repository", "tag", "pullPolicy"]
+        },
+        "init": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "configPullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] },
+            "skillsPullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+          },
+          "required": ["configPullPolicy", "skillsPullPolicy"]
+        },
+        "paths": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "home": { "type": "string", "minLength": 1 },
+            "homeDir": { "type": "string", "minLength": 1 },
+            "workspaceDir": { "type": "string", "minLength": 1 },
+            "sessionsDir": { "type": "string", "minLength": 1 }
+          },
+          "required": ["home", "homeDir", "workspaceDir", "sessionsDir"]
+        },
+        "secrets": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "apiKey": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "existingSecret": { "type": "string" },
+                "create": { "type": "boolean" },
+                "name": { "type": "string" },
+                "key": { "type": "string", "minLength": 1 },
+                "value": { "type": "string" }
+              },
+              "required": ["key"],
+              "allOf": [
+                {
+                  "oneOf": [
+                    {
+                      "properties": {
+                        "existingSecret": { "type": "string", "minLength": 1 }
+                      },
+                      "required": ["existingSecret"]
+                    },
+                    {
+                      "properties": {
+                        "create": { "const": true },
+                        "value": { "type": "string", "minLength": 1 }
+                      },
+                      "required": ["create", "value"]
+                    }
+                  ]
+                },
+                {
+                  "not": {
+                    "allOf": [
+                      {
+                        "properties": {
+                          "create": { "const": true }
+                        },
+                        "required": ["create"]
+                      },
+                      {
+                        "properties": {
+                          "existingSecret": { "type": "string", "minLength": 1 }
+                        },
+                        "required": ["existingSecret"]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          "required": ["apiKey"]
+        },
+        "config": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["merge", "overwrite"],
+              "description": "Config apply mode for openclaw.json: merge preserves runtime-only keys, overwrite enforces Helm values as source of truth (including key removals)."
+            },
+            "modelProvider": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "baseUrl": { "type": "string", "minLength": 1 },
+                "model": { "type": "string", "minLength": 1 },
+                "provider": { "type": "string", "minLength": 1 },
+                "api": {
+                  "type": "string",
+                  "enum": [
+                    "openai-completions",
+                    "openai-responses",
+                    "anthropic-messages",
+                    "google-generative-ai",
+                    "github-copilot",
+                    "bedrock-converse-stream",
+                    "ollama"
+                  ]
+                },
+                "models": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "properties": {
+                      "id": { "type": "string", "minLength": 1 },
+                      "name": { "type": "string", "minLength": 1 }
+                    },
+                    "required": ["id", "name"]
+                  }
+                },
+                "extra": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              },
+              "required": ["baseUrl", "model", "provider", "api"]
+            }
+          }
+        },
+        "bootstrap": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "mode": { "type": "string", "enum": ["offline", "online"] },
+            "seedImage": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "repository": { "type": "string", "minLength": 1 },
+                "tag": { "type": "string", "minLength": 1 },
+                "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+              },
+              "required": ["repository", "tag", "pullPolicy"]
+            }
+          },
+          "required": ["mode", "seedImage"]
+        }
+      },
+      "required": ["image", "secrets", "config", "bootstrap", "paths"]
+    },
+    "sandbox": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "workspaceMountPath": { "type": "string", "minLength": 1 },
+        "shmMountPath": { "type": "string", "minLength": 1 },
+        "image": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "repository": { "type": "string", "minLength": 1 },
+            "tag": { "type": "string", "minLength": 1 },
+            "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+          },
+          "required": ["repository", "tag", "pullPolicy"]
+        }
+      },
+      "required": ["enabled", "image", "workspaceMountPath", "shmMountPath"]
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "data": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "existingClaim": { "type": "string" },
+            "accessMode": { "type": "string", "enum": ["ReadWriteOnce", "ReadWriteMany", "ReadOnlyMany"] },
+            "size": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    }
+  },
+  "required": ["workload", "openclaw", "gateway", "sandbox", "storage"]
+}

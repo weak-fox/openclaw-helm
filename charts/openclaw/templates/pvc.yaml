@@ -1,0 +1,17 @@
+{{- if and .Values.storage.data.enabled (not .Values.storage.data.existingClaim) -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "openclaw.fullname" . }}-data
+  labels:
+    {{- include "openclaw.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.storage.data.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.data.size }}
+  {{- if .Values.storage.data.storageClass }}
+  storageClassName: {{ .Values.storage.data.storageClass | quote }}
+  {{- end }}
+{{- end }}

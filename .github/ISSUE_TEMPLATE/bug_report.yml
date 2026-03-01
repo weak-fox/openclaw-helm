@@ -1,0 +1,35 @@
+name: Bug report
+description: Report a reproducible problem
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Exact steps and values used
+      placeholder: |
+        1. helm install/upgrade command
+        2. values overrides
+        3. observed behavior
+    validations:
+      required: true
+  - type: input
+    id: chart_version
+    attributes:
+      label: Chart version
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / error output
+      render: shell

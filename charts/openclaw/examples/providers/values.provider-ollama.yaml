@@ -1,0 +1,17 @@
+openclaw:
+  # Put your Ollama API key into OPENCLAW_API_KEY when gateway auth is enabled.
+  # For local/no-auth Ollama, keep this Secret but value can be a placeholder.
+  secrets:
+    apiKey:
+      existingSecret: openclaw-api-key
+      key: OPENCLAW_API_KEY
+
+  config:
+    modelProvider:
+      provider: ollama
+      # Use native Ollama adapter.
+      api: ollama
+      # Ollama native endpoint (no /v1 required).
+      baseUrl: http://ollama.default.svc.cluster.local:11434
+      # Must match one model available in your Ollama instance.
+      model: qwen3:8b

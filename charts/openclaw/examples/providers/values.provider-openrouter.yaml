@@ -1,0 +1,19 @@
+openclaw:
+  # Put your OpenRouter key into OPENCLAW_API_KEY.
+  secrets:
+    apiKey:
+      existingSecret: openclaw-api-key
+      key: OPENCLAW_API_KEY
+
+  config:
+    modelProvider:
+      provider: openrouter
+      api: openai-completions
+      baseUrl: https://openrouter.ai/api/v1
+      model: openai/gpt-4o-mini
+      extra:
+        # Optional but recommended metadata for OpenRouter.
+        headers:
+          HTTP-Referer: https://your-app.example.com
+          X-Title: openclaw-helm
+

@@ -1,0 +1,223 @@
+name: Sync OpenClaw Release
+
+on:
+  schedule:
+    # Run after seed workflow windows (seed at 05:30 / 20:30 UTC).
+    - cron: "0 6,21 * * *"
+  workflow_dispatch:
+    inputs:
+      openclaw_version:
+        description: "Target OpenClaw version, e.g. 2026.2.24 (optional)"
+        required: false
+        type: string
+      chart_bump:
+        description: "Chart semver bump level when update is detected"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+      dry_run:
+        description: "Preview changes only, do not push commit"
+        required: false
+        type: boolean
+        default: false
+      seed_semver:
+        description: "Seed image semver prefix used in tag v<seed_semver>-oc-<openclaw_version>"
+        required: false
+        type: string
+        default: "1.0.0"
+      seed_image_repo:
+        description: "Seed image repository"
+        required: false
+        type: string
+        default: "ghcr.io/weak-fox/openclaw-offline-seed"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install yq
+        uses: mikefarah/yq@v4
+
+      - name: Resolve upstream target version
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.openclaw_version }}
+        run: |
+          set -euo pipefail
+
+          target="${INPUT_VERSION:-}"
+          if [ -z "$target" ]; then
+            target="$(gh api repos/openclaw/openclaw/releases/latest --jq '.tag_name' | sed 's/^v//')"
+          fi
+
+          if ! [[ "$target" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid target version: $target"
+            exit 1
+          fi
+
+          echo "version=$target" >> "$GITHUB_OUTPUT"
+          echo "Target OpenClaw version: $target"
+
+      - name: Resolve and validate seed image
+        id: seed
+        env:
+          TARGET_VERSION: ${{ steps.target.outputs.version }}
+          INPUT_SEED_SEMVER: ${{ inputs.seed_semver }}
+          INPUT_SEED_IMAGE_REPO: ${{ inputs.seed_image_repo }}
+        run: |
+          set -euo pipefail
+
+          seed_semver="${INPUT_SEED_SEMVER:-1.0.0}"
+          seed_repo="${INPUT_SEED_IMAGE_REPO:-ghcr.io/weak-fox/openclaw-offline-seed}"
+          seed_tag="v${seed_semver}-oc-${TARGET_VERSION}"
+          seed_image="${seed_repo}:${seed_tag}"
+
+          echo "semver=$seed_semver" >> "$GITHUB_OUTPUT"
+          echo "repo=$seed_repo" >> "$GITHUB_OUTPUT"
+          echo "tag=$seed_tag" >> "$GITHUB_OUTPUT"
+          echo "image=$seed_image" >> "$GITHUB_OUTPUT"
+
+          if docker manifest inspect "$seed_image" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Seed image exists: $seed_image"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Seed image missing: $seed_image"
+          fi
+
+      - name: Read current chart versions
+        id: current
+        run: |
+          set -euo pipefail
+          app="$(yq '.appVersion' charts/openclaw/Chart.yaml | tr -d '"')"
+          chart="$(yq '.version' charts/openclaw/Chart.yaml | tr -d '"')"
+          echo "app=$app" >> "$GITHUB_OUTPUT"
+          echo "chart=$chart" >> "$GITHUB_OUTPUT"
+          echo "Current appVersion: $app"
+          echo "Current chart version: $chart"
+
+      - name: Decide whether update is required
+        id: check
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.target.outputs.version }}" = "${{ steps.current.outputs.app }}" ]; then
+            echo "needs_update=false" >> "$GITHUB_OUTPUT"
+            echo "Already on latest OpenClaw release."
+          elif [ "${{ steps.seed.outputs.exists }}" != "true" ]; then
+            echo "needs_update=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping chart update because seed image is missing: ${{ steps.seed.outputs.image }}"
+          else
+            echo "needs_update=true" >> "$GITHUB_OUTPUT"
+            echo "Update required: ${{ steps.current.outputs.app }} -> ${{ steps.target.outputs.version }} with seed ${{ steps.seed.outputs.tag }}"
+          fi
+
+      - name: Calculate next chart version
+        id: next
+        if: steps.check.outputs.needs_update == 'true'
+        env:
+          BUMP_TYPE: ${{ inputs.chart_bump }}
+        run: |
+          set -euo pipefail
+          current="${{ steps.current.outputs.chart }}"
+          bump="${BUMP_TYPE:-patch}"
+          IFS='.' read -r major minor patch <<< "$current"
+
+          case "$bump" in
+            major)
+              major=$((major + 1))
+              minor=0
+              patch=0
+              ;;
+            minor)
+              minor=$((minor + 1))
+              patch=0
+              ;;
+            patch|*)
+              patch=$((patch + 1))
+              ;;
+          esac
+
+          next="${major}.${minor}.${patch}"
+          echo "version=$next" >> "$GITHUB_OUTPUT"
+          echo "Next chart version: $next"
+
+      - name: Apply version updates
+        if: steps.check.outputs.needs_update == 'true'
+        env:
+          TARGET_VERSION: ${{ steps.target.outputs.version }}
+          NEXT_CHART_VERSION: ${{ steps.next.outputs.version }}
+          SEED_IMAGE_REPO: ${{ steps.seed.outputs.repo }}
+          SEED_IMAGE_TAG: ${{ steps.seed.outputs.tag }}
+          SEED_SEMVER: ${{ steps.seed.outputs.semver }}
+        run: |
+          set -euo pipefail
+
+          yq -i '.appVersion = strenv(TARGET_VERSION) | .version = strenv(NEXT_CHART_VERSION)' charts/openclaw/Chart.yaml
+          yq -i '.openclaw.image.tag = strenv(TARGET_VERSION)' charts/openclaw/values.yaml
+          yq -i '.openclaw.image.tag = strenv(TARGET_VERSION)' charts/openclaw/examples/values.offline-seed.yaml
+          yq -i '.openclaw.bootstrap.seedImage.repository = strenv(SEED_IMAGE_REPO) | .openclaw.bootstrap.seedImage.tag = strenv(SEED_IMAGE_TAG)' charts/openclaw/values.yaml
+          yq -i '.openclaw.bootstrap.seedImage.repository = strenv(SEED_IMAGE_REPO) | .openclaw.bootstrap.seedImage.tag = strenv(SEED_IMAGE_TAG)' charts/openclaw/examples/values.offline-seed.yaml
+
+          export TARGET_VERSION NEXT_CHART_VERSION SEED_IMAGE_REPO SEED_SEMVER
+          perl -i -pe '
+            s/App_Version-[0-9]+\.[0-9]+\.[0-9]+-ef4444/"App_Version-$ENV{TARGET_VERSION}-ef4444"/ge;
+            s/Chart_Version-[0-9]+\.[0-9]+\.[0-9]+-blue/"Chart_Version-$ENV{NEXT_CHART_VERSION}-blue"/ge;
+            s/\| Chart \| `[^`]+` \|/| Chart | `$ENV{NEXT_CHART_VERSION}` |/g;
+            s/\| OpenClaw app \| `[^`]+` \|/| OpenClaw app | `$ENV{TARGET_VERSION}` |/g;
+          ' README.md
+
+          perl -i -pe '
+            s{ghcr\.io/openclaw/openclaw:[0-9]+\.[0-9]+\.[0-9]+}{"ghcr.io/openclaw/openclaw:$ENV{TARGET_VERSION}"}ge;
+            s{ghcr\.io/weak-fox/openclaw-offline-seed:v[0-9]+\.[0-9]+\.[0-9]+-oc-[0-9]+\.[0-9]+\.[0-9]+}{"$ENV{SEED_IMAGE_REPO}:v$ENV{SEED_SEMVER}-oc-$ENV{TARGET_VERSION}"}ge;
+          ' charts/openclaw/README.md
+
+      - name: Validate render
+        if: steps.check.outputs.needs_update == 'true'
+        run: |
+          set -euo pipefail
+          helm lint ./charts/openclaw
+          helm template openclaw ./charts/openclaw >/tmp/openclaw-rendered.yaml
+          helm template openclaw ./charts/openclaw -f ./charts/openclaw/examples/values.offline-seed.yaml >/tmp/openclaw-rendered-offline.yaml
+
+      - name: Show diff
+        if: steps.check.outputs.needs_update == 'true'
+        run: git --no-pager diff -- charts/openclaw/Chart.yaml charts/openclaw/values.yaml charts/openclaw/examples/values.offline-seed.yaml charts/openclaw/README.md README.md
+
+      - name: Commit and push
+        if: steps.check.outputs.needs_update == 'true'
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          TARGET_VERSION: ${{ steps.target.outputs.version }}
+          NEXT_CHART_VERSION: ${{ steps.next.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          if [ "${DRY_RUN:-false}" = "true" ]; then
+            echo "Dry run enabled; skipping commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add charts/openclaw/Chart.yaml charts/openclaw/values.yaml charts/openclaw/examples/values.offline-seed.yaml charts/openclaw/README.md README.md
+
+          if git diff --staged --quiet; then
+            echo "No staged changes to commit."
+            exit 0
+          fi
+
+          git commit -m "chore(sync): bump OpenClaw to ${TARGET_VERSION} (chart ${NEXT_CHART_VERSION})"
+          git push

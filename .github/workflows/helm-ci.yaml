@@ -1,0 +1,72 @@
+name: Helm CI
+
+on:
+  pull_request:
+    paths:
+      - "charts/openclaw/**"
+      - "ct.yaml"
+      - ".github/workflows/helm-ci.yaml"
+  push:
+    branches:
+      - main
+    paths:
+      - "charts/openclaw/**"
+      - "ct.yaml"
+      - ".github/workflows/helm-ci.yaml"
+
+jobs:
+  ct-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.17.2
+
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@v2.8.0
+
+      - name: Detect changed charts
+        id: changed
+        run: |
+          set -euo pipefail
+          changed="$(ct list-changed --target-branch "${{ github.event.repository.default_branch }}")"
+          if [ -n "$changed" ]; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            echo "$changed"
+          else
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "No chart changes detected by ct list-changed."
+          fi
+
+      - name: Run ct lint
+        if: steps.changed.outputs.has_changes == 'true'
+        run: ct lint --config ct.yaml
+
+  lint-and-render:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.17.2
+
+      - name: Helm lint (default values)
+        run: helm lint ./charts/openclaw
+
+      - name: Helm lint (offline example values)
+        run: helm lint ./charts/openclaw -f ./charts/openclaw/examples/values.offline-seed.yaml
+
+      - name: Helm template (default values)
+        run: helm template openclaw ./charts/openclaw >/tmp/openclaw-rendered.yaml
+
+      - name: Helm template (offline example values)
+        run: helm template openclaw ./charts/openclaw -f ./charts/openclaw/examples/values.offline-seed.yaml >/tmp/openclaw-rendered-offline.yaml

@@ -1,0 +1,20 @@
+openclaw:
+  # Keep using OPENCLAW_API_KEY as the env var name to simplify chart wiring.
+  # Put your Anthropic key into this Secret key.
+  secrets:
+    apiKey:
+      existingSecret: openclaw-api-key
+      key: OPENCLAW_API_KEY
+
+  config:
+    modelProvider:
+      provider: anthropic
+      api: anthropic-messages
+      baseUrl: https://api.anthropic.com
+      model: claude-sonnet-4-5
+      models:
+        - id: claude-sonnet-4-5
+          name: Claude Sonnet 4.5
+        - id: claude-opus-4-1
+          name: Claude Opus 4.1
+

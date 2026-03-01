@@ -1,0 +1,316 @@
+# OpenClaw Helm Chart Values
+#
+# Design principles:
+# - Group values by responsibility (global/workload/gateway/openclaw/sandbox/storage)
+# - Keep operational settings close to the component they affect
+# - Enforce OpenClaw single replica
+
+global:
+  nameOverride: ""
+  fullnameOverride: ""
+  # Optional global registry prefix for relative image repositories.
+  # Example:
+  # imageRegistry: sz.cogiot.com/id348504946c01000
+  # Then repo "openclaw/openclaw" becomes:
+  # sz.cogiot.com/id348504946c01000/openclaw/openclaw
+  imageRegistry: ""
+workload:
+  replicaCount: 1
+  strategy: Recreate
+  # Reference existing pull secrets (chart will not create them), for example:
+  # imagePullSecrets:
+  #   - name: regcred
+  #   - name: jfrog-regcred
+  imagePullSecrets: []
+  podLabels: {}
+  podAnnotations: {}
+  podSecurityContext:
+    fsGroup: 1000
+    fsGroupChangePolicy: OnRootMismatch
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+  name: ""
+gateway:
+  service:
+    # Service type for both OpenClaw (:port) and sandbox VNC (:sandboxPort).
+    # For local cluster debugging you can use NodePort.
+    type: ClusterIP
+    ipFamilyPolicy: SingleStack
+    ipFamilies:
+      - IPv4
+    # OpenClaw gateway service port.
+    port: 18789
+    # aio-sandbox VNC/noVNC service port.
+    sandboxPort: 8080
+  trustedProxies:
+    - "10.0.0.1"
+  controlUi:
+    # Local testing override. Do not enable in production.
+    allowInsecureAuth: false
+    # Local testing override. Do not enable in production.
+    dangerouslyAllowHostHeaderOriginFallback: false
+    # Local testing override. Do not enable in production.
+    dangerouslyDisableDeviceAuth: false
+openclaw:
+  image:
+    # If global.imageRegistry is empty, this should be a full image repository path.
+    # If global.imageRegistry is set, this should be a relative repository name.
+    repository: ghcr.io/openclaw/openclaw
+    tag: "2026.2.26"
+    pullPolicy: IfNotPresent
+  init:
+    configPullPolicy: IfNotPresent
+    skillsPullPolicy: IfNotPresent
+  secrets:
+    apiKey:
+      # Recommended: provide an existing Kubernetes Secret.
+      # The secret key value is exposed as env OPENCLAW_API_KEY.
+      # This is the default shared key consumed by model providers.
+      existingSecret: openclaw-api-key
+      key: OPENCLAW_API_KEY
+      # Optional: let chart create the API key secret.
+      create: false
+      name: openclaw-api-key
+      value: ""
+  paths:
+    home: /home/node
+    homeDir: /home/node/.openclaw
+    workspaceDir: /home/node/.openclaw/workspace
+    sessionsDir: /home/node/.openclaw/sessions
+  config:
+    # Config apply strategy for {{ .Values.openclaw.paths.homeDir }}/openclaw.json.
+    # - merge (default): deep-merge Helm config into existing runtime config.
+    #   Runtime keys not present in Helm values are preserved.
+    # - overwrite: replace runtime config from Helm config on each pod start.
+    # Use overwrite when you need strict GitOps behavior (including key deletions).
+    # Note: deployment checksum annotations already trigger rollout on ConfigMap/script/secret changes.
+    mode: merge
+    modelProvider:
+      # Provider ID in models.providers.<provider>.
+      # Also used by agents.defaults.model.primary as "<provider>/<model>".
+      # Examples: openai, anthropic, litellm, openrouter, cloudflare-ai-gateway
+      provider: openai
+      # API protocol adapter used by this provider config.
+      # Supported values:
+      # - openai-completions   (OpenAI-compatible /v1/chat/completions)
+      # - openai-responses     (OpenAI Responses API)
+      # - anthropic-messages   (Anthropic Messages API)
+      # - google-generative-ai (Google Generative AI API)
+      # - ollama               (Ollama native /api/chat adapter)
+      # - github-copilot       (GitHub Copilot endpoint adapter)
+      # - bedrock-converse-stream (AWS Bedrock Converse Stream adapter)
+      #
+      # For many OpenAI-compatible gateways (LiteLLM/OneAPI/OpenRouter/proxies),
+      # openai-completions is typically the most tool-call-compatible choice.
+      api: openai-responses
+      # Provider base URL.
+      # Notes:
+      # - OpenAI-compatible endpoints usually include /v1
+      # - anthropic-messages usually uses provider root without /v1
+      #   (client appends /v1)
+      baseUrl: https://api.openai.com/v1
+      # Primary model ID (paired with provider above).
+      # Example agent default becomes "openai/gpt-4o-mini".
+      model: gpt-4o-mini
+      # Optional full model catalog for this provider.
+      # If empty, chart auto-builds one model entry from `model`.
+      # models:
+      #   - id: gpt-4o-mini
+      #     name: GPT-4o mini
+      #   - id: gpt-4.1-mini
+      #     name: GPT-4.1 mini
+      models: []
+      # Optional passthrough fields merged into models.providers.<provider>.
+      # Use this for advanced provider options (headers, authHeader, apiKey override, etc.).
+      # extra:
+      #   authHeader: true
+      #   headers:
+      #     cf-aig-authorization: "Bearer <gateway-token>"
+      #   # Optional override if provider should not use OPENCLAW_API_KEY:
+      #   # apiKey: "${ANTHROPIC_API_KEY}"
+      extra: {}
+      # Quick examples (set provider/api/baseUrl/model accordingly):
+      # - OpenAI direct:
+      #   provider=openai, api=openai-responses, baseUrl=https://api.openai.com/v1
+      # - Anthropic direct:
+      #   provider=anthropic, api=anthropic-messages, baseUrl=https://api.anthropic.com
+      # - LiteLLM / OpenRouter / OneAPI style gateway:
+      #   provider=litellm, api=openai-completions, baseUrl=https://<gateway>/v1
+    tools:
+      execHost: gateway
+  plugins:
+    runtimeEntries:
+      - id: openclaw-mcp-adapter
+        enabled: true
+        config:
+          servers:
+            - name: sandbox
+              transport: http
+              url: http://127.0.0.1:8080/mcp
+          toolPrefix: true
+  bootstrap:
+    # offline: install skills/plugins from seed image (no runtime npx download)
+    # online: install from network during init
+    mode: offline
+    seedImage:
+      # Same rule as other images:
+      # - absolute repository: ghcr.io/weak-fox/openclaw-offline-seed
+      # - relative repository: weak-fox/openclaw-offline-seed (with global.imageRegistry)
+      # Recommended tag format:
+      # v<seed-semver>-oc-<openclaw-version> (for example v1.0.0-oc-2026.2.26)
+      repository: ghcr.io/weak-fox/openclaw-offline-seed
+      tag: "v1.0.0-oc-2026.2.26"
+      pullPolicy: IfNotPresent
+    skills:
+      enabled: true
+      items:
+        - weather
+    plugins:
+      enabled: true
+      items:
+        - id: openclaw-mcp-adapter
+          onlineSpec: openclaw-mcp-adapter
+          offlineMode: preinstalled
+  container:
+    command:
+      - node
+      - dist/index.js
+    args:
+      - gateway
+      - --bind
+      - lan
+      - --port
+      - "18789"
+    env: {}
+    # Additional envFrom sources, for example:
+    # envFrom:
+    #   - secretRef:
+    #       name: openclaw-extra-env
+    envFrom: []
+    securityContext:
+      runAsUser: 1000
+      runAsGroup: 1000
+      runAsNonRoot: true
+      readOnlyRootFilesystem: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 2000m
+        memory: 2Gi
+    probes:
+      startup:
+        enabled: true
+        initialDelaySeconds: 5
+        periodSeconds: 5
+        timeoutSeconds: 5
+        failureThreshold: 30
+      readiness:
+        enabled: true
+        initialDelaySeconds: 10
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 3
+      liveness:
+        enabled: true
+        initialDelaySeconds: 30
+        periodSeconds: 30
+        timeoutSeconds: 5
+        failureThreshold: 3
+sandbox:
+  enabled: true
+  workspaceMountPath: /openclaw-workspace
+  shmMountPath: /dev/shm
+  image:
+    # agent-infra/sandbox sidecar image (CDP + VNC + noVNC)
+    repository: ghcr.io/agent-infra/sandbox
+    tag: "1.0.0.152"
+    pullPolicy: IfNotPresent
+  env:
+    TZ: UTC
+    DISPLAY_WIDTH: "1280"
+    DISPLAY_HEIGHT: "1024"
+    BROWSER_EXTRA_ARGS: "--disable-dev-shm-usage"
+  securityContext:
+    seccompProfile:
+      type: Unconfined
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+storage:
+  config:
+    # Mount generated openclaw.json and keep config state under data volume.
+    enabled: true
+  data:
+    # Main persistent workspace/session storage.
+    # Set enabled=false for fully ephemeral testing.
+    enabled: true
+    existingClaim: ""
+    accessMode: ReadWriteOnce
+    size: 5Gi
+    storageClass: ""
+  tmp:
+    enabled: true
+  sharedMemory:
+    enabled: true
+    sizeLimit: 2Gi
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: openclaw.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          portName: http
+  tls: []
+networkPolicy:
+  enabled: false
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: gateway-system
+      ports:
+        - protocol: TCP
+          port: 18789
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+              - 100.64.0.0/10

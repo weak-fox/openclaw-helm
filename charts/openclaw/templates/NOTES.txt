@@ -1,0 +1,18 @@
+OpenClaw has been deployed.
+
+Chart version: {{ .Chart.Version }}
+App version:   {{ .Chart.AppVersion }}
+
+1. Wait for pod readiness:
+
+   kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+
+2. Access the gateway:
+
+   kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "openclaw.fullname" . }} {{ .Values.gateway.service.port }}:{{ .Values.gateway.service.port }}
+
+3. Open http://localhost:{{ .Values.gateway.service.port }} and use OpenClaw default gateway token.
+
+4. If you need to inspect startup token logs:
+
+   kubectl logs -n {{ .Release.Namespace }} deployment/{{ include "openclaw.fullname" . }} --tail=200 | grep -i token

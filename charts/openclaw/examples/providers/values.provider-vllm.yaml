@@ -1,0 +1,17 @@
+openclaw:
+  # Put your vLLM gateway key into OPENCLAW_API_KEY when auth is enabled.
+  # If your vLLM endpoint is unauthenticated, you can still provide a dummy value.
+  secrets:
+    apiKey:
+      existingSecret: openclaw-api-key
+      key: OPENCLAW_API_KEY
+
+  config:
+    modelProvider:
+      provider: vllm
+      api: openai-completions
+      # Typical in-cluster service URL. Change to your vLLM endpoint.
+      baseUrl: http://vllm.default.svc.cluster.local:8000/v1
+      # Must match one model exposed by your vLLM server.
+      model: Qwen/Qwen3-32B
+
