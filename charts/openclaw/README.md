@@ -23,7 +23,7 @@ This chart deploys OpenClaw on Kubernetes using standard Helm templates.
 
 > Artifact Hub does not reliably render Mermaid diagrams.
 > The image above is the canonical architecture view.
-> Runtime ports: OpenClaw `18789`, aio-sandbox `8080`.
+> Runtime ports: OpenClaw `18789`, aio-sandbox `8080` (in-pod container listeners).
 
 ## Key Point
 
