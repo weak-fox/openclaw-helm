@@ -21,9 +21,10 @@ This chart deploys OpenClaw on Kubernetes using standard Helm templates.
 
 ![OpenClaw architecture](https://raw.githubusercontent.com/weak-fox/openclaw-helm/main/docs/assets/openclaw-architecture.svg)
 
-> Artifact Hub does not reliably render Mermaid diagrams.
-> The image above is the canonical architecture view.
-> Runtime ports: OpenClaw `18789`, aio-sandbox `8080` (in-pod container listeners).
+| Component | Port | Notes |
+| --- | --- | --- |
+| OpenClaw Gateway | `18789` | In-pod listener |
+| aio-sandbox | `8080` | In-pod listener (CDP/VNC/noVNC) |
 
 ## Key Point
 
