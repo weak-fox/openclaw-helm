@@ -36,6 +36,7 @@ on:
         default: "ghcr.io/weak-fox/openclaw-offline-seed"
 
 permissions:
+  actions: write
   contents: write
 
 jobs:
@@ -197,6 +198,7 @@ jobs:
         run: git --no-pager diff -- charts/openclaw/Chart.yaml charts/openclaw/values.yaml charts/openclaw/examples/values.offline-seed.yaml charts/openclaw/README.md README.md
 
       - name: Commit and push
+        id: commit_push
         if: steps.check.outputs.needs_update == 'true'
         env:
           DRY_RUN: ${{ inputs.dry_run }}
@@ -204,6 +206,7 @@ jobs:
           NEXT_CHART_VERSION: ${{ steps.next.outputs.version }}
         run: |
           set -euo pipefail
+          echo "pushed=false" >> "$GITHUB_OUTPUT"
 
           if [ "${DRY_RUN:-false}" = "true" ]; then
             echo "Dry run enabled; skipping commit."
@@ -221,3 +224,12 @@ jobs:
 
           git commit -m "chore(sync): bump OpenClaw to ${TARGET_VERSION} (chart ${NEXT_CHART_VERSION})"
           git push
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger chart release
+        if: steps.commit_push.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run chart-release.yaml --ref main
