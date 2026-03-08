@@ -1,7 +1,7 @@
 openclaw:
   image:
     repository: ghcr.io/openclaw/openclaw
-    tag: "2026.3.2"
+    tag: "2026.3.7"
   secrets:
     apiKey:
       existingSecret: openclaw-api-key
@@ -10,7 +10,7 @@ openclaw:
     mode: offline
     seedImage:
       repository: ghcr.io/weak-fox/openclaw-offline-seed
-      tag: "v1.0.0-oc-2026.3.2"
+      tag: "v1.0.0-oc-2026.3.7"
       pullPolicy: IfNotPresent
     plugins:
       enabled: true
