@@ -25,10 +25,10 @@ on:
         type: boolean
         default: false
       seed_semver:
-        description: "Seed image semver prefix used in tag v<seed_semver>-oc-<openclaw_version>"
+        description: "Optional seed image semver override; otherwise use the latest seed release whose tag ends with -oc-<openclaw_version>"
         required: false
         type: string
-        default: "1.0.0"
+        default: ""
       seed_image_repo:
         description: "Seed image repository"
         required: false
@@ -61,29 +61,11 @@ jobs:
       - name: Resolve and validate seed image
         id: seed
         env:
+          GH_TOKEN: ${{ github.token }}
           TARGET_VERSION: ${{ steps.target.outputs.version }}
           INPUT_SEED_SEMVER: ${{ inputs.seed_semver }}
           INPUT_SEED_IMAGE_REPO: ${{ inputs.seed_image_repo }}
-        run: |
-          set -euo pipefail
-
-          seed_semver="${INPUT_SEED_SEMVER:-1.0.0}"
-          seed_repo="${INPUT_SEED_IMAGE_REPO:-ghcr.io/weak-fox/openclaw-offline-seed}"
-          seed_tag="v${seed_semver}-oc-${TARGET_VERSION}"
-          seed_image="${seed_repo}:${seed_tag}"
-
-          echo "semver=$seed_semver" >> "$GITHUB_OUTPUT"
-          echo "repo=$seed_repo" >> "$GITHUB_OUTPUT"
-          echo "tag=$seed_tag" >> "$GITHUB_OUTPUT"
-          echo "image=$seed_image" >> "$GITHUB_OUTPUT"
-
-          if docker manifest inspect "$seed_image" >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "Seed image exists: $seed_image"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "Seed image missing: $seed_image"
-          fi
+        run: .github/scripts/resolve-seed-image.sh
 
       - name: Read current chart versions
         id: current
@@ -105,7 +87,7 @@ jobs:
             echo "Already on latest OpenClaw release."
           elif [ "${{ steps.seed.outputs.exists }}" != "true" ]; then
             echo "needs_update=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping chart update because seed image is missing: ${{ steps.seed.outputs.image }}"
+            echo "${{ steps.seed.outputs.reason }}"
           else
             echo "needs_update=true" >> "$GITHUB_OUTPUT"
             echo "Update required: ${{ steps.current.outputs.app }} -> ${{ steps.target.outputs.version }} with seed ${{ steps.seed.outputs.tag }}"
