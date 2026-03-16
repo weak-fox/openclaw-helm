@@ -12,17 +12,11 @@ extract_version_token() {
   return 1
 }
 
-normalize_target_version() {
+validate_target_version() {
   local raw="${1#v}"
 
-  if [[ "$raw" =~ ^([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-    printf '%s\n' "${BASH_REMATCH[1]}"
-    return 0
-  fi
-
-  # Recovery releases may use git tags like v2026.3.13-1, but the app version stays 2026.3.13.
-  if [[ "$raw" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-([0-9]+)$ ]]; then
-    printf '%s\n' "${BASH_REMATCH[1]}"
+  if [[ "$raw" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+    printf '%s\n' "$raw"
     return 0
   fi
 
@@ -40,17 +34,17 @@ resolve_from_release_json() {
   local release_json="$1"
   local field_value normalized_version version_token
 
-  # Release titles carry the canonical app version; tags can include GitHub-only recovery suffixes.
-  field_value="$(json_field name "$release_json")"
+  # Prefer the exact release tag when it exists so versions like 2026.3.13-1 are preserved.
+  field_value="$(json_field tag_name "$release_json")"
   if version_token="$(extract_version_token "$field_value")" \
-    && normalized_version="$(normalize_target_version "$version_token")"; then
+    && normalized_version="$(validate_target_version "$version_token")"; then
     printf '%s\n' "$normalized_version"
     return 0
   fi
 
-  field_value="$(json_field tag_name "$release_json")"
+  field_value="$(json_field name "$release_json")"
   if version_token="$(extract_version_token "$field_value")" \
-    && normalized_version="$(normalize_target_version "$version_token")"; then
+    && normalized_version="$(validate_target_version "$version_token")"; then
     printf '%s\n' "$normalized_version"
     return 0
   fi
@@ -60,14 +54,10 @@ resolve_from_release_json() {
 
 target_input="${INPUT_VERSION:-}"
 if [ -n "$target_input" ]; then
-  if ! target_version="$(normalize_target_version "$target_input")"; then
+  if ! target_version="$(validate_target_version "$target_input")"; then
     echo "Invalid target version: $target_input"
-    echo "Expected a stable OpenClaw version like 2026.3.13"
+    echo "Expected an OpenClaw version like 2026.3.13 or 2026.3.13-1"
     exit 1
-  fi
-
-  if [ "$target_input" != "$target_version" ]; then
-    echo "Normalized target version: $target_input -> $target_version"
   fi
 else
   release_json="${RELEASE_JSON:-}"

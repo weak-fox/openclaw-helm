@@ -63,10 +63,10 @@ assert_fails() {
 }
 
 assert_resolves \
-  "latest release title wins over recovery tag suffix" \
+  "latest release tag is preserved when it carries a recovery suffix" \
   "" \
   '{"name":"openclaw 2026.3.13","tag_name":"v2026.3.13-1"}' \
-  "2026.3.13"
+  "2026.3.13-1"
 
 assert_resolves \
   "manual stable version passes through" \
@@ -75,14 +75,20 @@ assert_resolves \
   "2026.3.13"
 
 assert_resolves \
-  "manual recovery tag normalizes to the deployable version" \
+  "manual recovery tag is preserved exactly" \
   "2026.3.13-1" \
   "" \
-  "2026.3.13"
+  "2026.3.13-1"
+
+assert_resolves \
+  "manual prerelease tag is preserved exactly" \
+  "2026.3.13-beta.1" \
+  "" \
+  "2026.3.13-beta.1"
 
 assert_fails \
-  "beta prerelease does not resolve as a stable release" \
-  "" \
-  '{"name":"openclaw 2026.3.13-beta.1","tag_name":"v2026.3.13-beta.1"}'
+  "nonsensical version strings are still rejected" \
+  "latest" \
+  ""
 
 echo "All resolve-openclaw-version tests passed"
