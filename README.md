@@ -14,8 +14,8 @@
   <a href="https://github.com/weak-fox/openclaw-helm/actions/workflows/chart-release.yaml"><img src="https://img.shields.io/github/actions/workflow/status/weak-fox/openclaw-helm/chart-release.yaml?label=chart%20release" alt="Chart Release"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/github/license/weak-fox/openclaw-helm" alt="License"></a>
   <a href="https://weak-fox.github.io/openclaw-helm"><img src="https://img.shields.io/badge/helm%20repo-openclaw--helm-0ea5e9" alt="Helm Repo"></a>
-  <a href="https://github.com/weak-fox/openclaw-helm"><img src="https://img.shields.io/badge/Chart_Version-1.0.19-blue" alt="Chart Version"></a>
-  <a href="https://github.com/openclaw/openclaw"><img src="https://img.shields.io/badge/App_Version-2026.4.11-ef4444" alt="App Version"></a>
+  <a href="https://github.com/weak-fox/openclaw-helm"><img src="https://img.shields.io/badge/Chart_Version-1.0.20-blue" alt="Chart Version"></a>
+  <a href="https://github.com/openclaw/openclaw"><img src="https://img.shields.io/badge/App_Version-2026.4.12-ef4444" alt="App Version"></a>
   <a href="https://kubernetes.io/"><img src="https://img.shields.io/badge/Kubernetes-%3E%3D1.24-326ce5" alt="Kubernetes"></a>
   <a href="https://helm.sh/"><img src="https://img.shields.io/badge/Helm-v3.x-0f1689" alt="Helm"></a>
 </p>
@@ -46,8 +46,8 @@
 
 | Item | Version |
 | --- | --- |
-| Chart | `1.0.19` |
-| OpenClaw app | `2026.4.11` |
+| Chart | `1.0.20` |
+| OpenClaw app | `2026.4.12` |
 | Kubernetes | `>=1.24.0-0` |
 | Helm | `v3.x` |
 
