@@ -169,8 +169,8 @@ helm install openclaw ./charts/openclaw -n openclaw \
 
 The example uses:
 - `ghcr.io/agent-infra/sandbox:1.0.0.152`
-- `ghcr.io/openclaw/openclaw:2026.6.9`
-- `ghcr.io/weak-fox/openclaw-offline-seed:v1.0.46-oc-2026.6.9`
+- `ghcr.io/openclaw/openclaw:2026.6.10`
+- `ghcr.io/weak-fox/openclaw-offline-seed:v1.0.47-oc-2026.6.10`
 
 ## Optional: chart-managed API key secret
 
