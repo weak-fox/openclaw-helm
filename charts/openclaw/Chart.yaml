@@ -2,8 +2,8 @@ apiVersion: v2
 name: openclaw
 description: Helm packaging for OpenClaw on Kubernetes with aio-sandbox integration and flexible model/provider configuration.
 type: application
-version: 1.0.63
-appVersion: "2026.9.8"
+version: 1.0.64
+appVersion: "2026.9.9"
 kubeVersion: ">=1.24.0-0"
 keywords:
   - ai
