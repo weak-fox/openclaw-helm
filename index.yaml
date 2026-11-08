@@ -5,6 +5,35 @@ entries:
       artifacthub.io/category: ai-machine-learning
       artifacthub.io/license: MIT
     apiVersion: v2
+    appVersion: 2026.11.2
+    created: "2026-11-08T23:54:36.175404278Z"
+    description: Helm packaging for OpenClaw on Kubernetes with aio-sandbox integration
+      and flexible model/provider configuration.
+    digest: f05b43528fb33c1fb4f6ae73e026669e15761edcc366ad54b19a7e139ca67449
+    home: https://github.com/weak-fox/openclaw-helm
+    icon: https://raw.githubusercontent.com/weak-fox/openclaw-helm/main/docs/assets/openclaw-logo.svg
+    keywords:
+    - ai
+    - assistant
+    - chatbot
+    - automation
+    - kubernetes
+    kubeVersion: '>=1.24.0-0'
+    maintainers:
+    - name: weak-fox
+      url: https://github.com/weak-fox
+    name: openclaw
+    sources:
+    - https://github.com/weak-fox/openclaw-helm
+    - https://github.com/openclaw/openclaw
+    type: application
+    urls:
+    - https://github.com/weak-fox/openclaw-helm/releases/download/openclaw-1.0.76/openclaw-1.0.76.tgz
+    version: 1.0.76
+  - annotations:
+      artifacthub.io/category: ai-machine-learning
+      artifacthub.io/license: MIT
+    apiVersion: v2
     appVersion: 2026.11.1
     created: "2026-11-05T13:26:15.051414302Z"
     description: Helm packaging for OpenClaw on Kubernetes with aio-sandbox integration
@@ -2060,4 +2089,4 @@ entries:
     urls:
     - https://github.com/weak-fox/openclaw-helm/releases/download/openclaw-1.0.3/openclaw-1.0.3.tgz
     version: 1.0.3
-generated: "2026-11-05T13:26:15.051834607Z"
+generated: "2026-11-08T23:54:36.17571107Z"
